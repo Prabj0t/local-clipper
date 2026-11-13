@@ -1,0 +1,34 @@
+[project]
+name = "local-clipper"
+version = "0.1.0"
+description = "An original, local-first 9:16 video clipping application"
+requires-python = ">=3.11,<3.12"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["clipper*"]
+
+[tool.setuptools.package-data]
+clipper = ["web/*.html", "web/*.css", "web/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+markers = ["media: requires an explicitly installed FFmpeg build"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"clipper/api.py" = ["B008"]
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

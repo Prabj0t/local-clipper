@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local Clipper</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script defer src="/assets/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/">LOCAL<span>CLIPPER</span><small>YOUR FOOTAGE. YOUR MACHINE.</small></a>
+    <button id="new-project" class="primary">+ New project</button>
+    <nav id="projects" aria-label="Projects"></nav>
+    <footer><span class="dot"></span> Local-first · 9:16 only<br>No uploads. No automatic downloads.</footer>
+  </aside>
+  <main>
+    <header><span id="breadcrumb">Workspace / New project</span><span class="badge">ORIGINAL BUILD · 0.1</span></header>
+    <div id="notice" role="status" hidden></div>
+    <section id="create-view">
+      <p class="eyebrow">LONG FORM IN. VERTICAL STORIES OUT.</p>
+      <h1>Find the moments<br>worth keeping.</h1>
+      <p class="lead">Bring a recording or a YouTube video. Select the story, preserve the gameplay, and make it yours.</p>
+      <form id="create-form" class="card">
+        <h2>Start with your source</h2>
+        <label>Project name<input id="project-name" required maxlength="120" placeholder="Friday stream highlights"></label>
+        <label>Local video path or YouTube URL<input id="project-source" required placeholder="D:\Videos\recording.mp4 or https://www.youtube.com/watch?v=..."></label>
+        <p class="help">A full local path avoids copying large files. YouTube downloads always require separate approval.</p>
+        <div class="grid two">
+          <label>Content type<select id="project-mode"><option value="podcast">Podcast / single subject</option><option value="gaming">Gaming + facecam</option></select></label>
+          <label>Workflow<select id="project-workflow"><option value="review">Review before export</option><option value="auto">Automatic export after analysis</option></select></label>
+        </div>
+        <button class="primary" type="submit">Create project</button>
+      </form>
+      <div class="card compact"><h3>Local capabilities</h3><div id="capabilities" class="capabilities"></div><p class="help">Missing tools and models block the relevant step. This app never installs them for you.</p></div>
+    </section>
+    <section id="editor-view" hidden>
+      <div class="heading-row"><div><p class="eyebrow">PROJECT STUDIO</p><h1 id="editor-title"></h1></div><button id="save-project">Save changes</button></div>
+      <div id="job-panel" class="card compact" hidden><div class="heading-row"><strong id="job-stage"></strong><button id="cancel-job">Cancel job</button></div><progress id="job-progress" max="1" value="0"></progress><p id="job-error" class="help"></p></div>
+      <div class="studio">
+        <div>
+          <div class="card player-card">
+            <video id="source-player" controls preload="metadata"></video>
+            <p id="source-summary" class="help">Inspect the source to read its duration and dimensions.</p>
+          </div>
+          <div class="card">
+            <div class="heading-row"><h2>Clip selection</h2><button id="add-clip">+ Add range</button></div>
+            <p class="help">Automated scores estimate interesting moments; they are not audience-retention measurements.</p>
+            <div id="clips"></div>
+          </div>
+          <div class="card">
+            <h2>English captions</h2>
+            <p class="help">One cue per line: start seconds | end seconds | text. Editing resets word-level timing. Original audio is unchanged.</p>
+            <textarea id="caption-editor" rows="8" spellcheck="true" placeholder="0 | 3.5 | Here is the important moment."></textarea>
+          </div>
+          <div id="exports" class="card"><h2>Local outputs</h2><div id="export-list"></div></div>
+        </div>
+        <div>
+          <div class="card">
+            <h2>Processing</h2>
+            <div class="grid two">
+              <label>Min. seconds<input id="min-duration" type="number" min="5" max="600" step="1"></label>
+              <label>Max. seconds<input id="max-duration" type="number" min="5" max="600" step="1"></label>
+            </div>
+            <label>Up to this many clips<input id="max-clips" type="number" min="1" max="100" placeholder="Auto (quality threshold)"></label>
+            <label>Minimum score<input id="min-score" type="number" min="0" max="1" step="0.05"></label>
+            <label class="check"><input id="captions-enabled" type="checkbox"> Generate / render English captions</label>
+            <label class="check"><input id="auto-export" type="checkbox"> Export automatically after analysis</label>
+            <label>Speech model<select id="speech-model"><option value="small">Whisper small · CPU INT8</option><option value="medium">Whisper medium · CPU INT8</option></select></label>
+          </div>
+          <div class="card">
+            <h2>9:16 composition</h2>
+            <label>Layout<select id="layout-mode"><option value="podcast">Podcast / single subject</option><option value="gaming">Facecam above gameplay</option></select></label>
+            <label>Resolution<select id="output-width"><option value="720">720 × 1280</option><option value="1080">1080 × 1920</option></select></label>
+            <div id="podcast-controls">
+              <label>Subject horizontal position<input id="focus-x" type="range" min="0" max="1" step="0.01"></label>
+              <label class="check"><input id="follow-face" type="checkbox"> Smooth face following (local YuNet required)</label>
+              <p class="help">Tracks a face, not the active speaker. For multiple people, choose the subject's starting position.</p>
+            </div>
+            <div id="gaming-controls" hidden>
+              <p class="help">Enter source rectangles as percentages. Confirm the facecam region; the app will not guess and silently drop it.</p>
+              <fieldset><legend>Facecam region</legend><div class="grid two">
+                <label>Left %<input id="face-x" type="number" min="0" max="100" step="0.1"></label>
+                <label>Top %<input id="face-y" type="number" min="0" max="100" step="0.1"></label>
+                <label>Width %<input id="face-width" type="number" min="0.1" max="100" step="0.1"></label>
+                <label>Height %<input id="face-height" type="number" min="0.1" max="100" step="0.1"></label>
+              </div></fieldset>
+              <label>Gameplay treatment<select id="gameplay-fit"><option value="fit">Fit full region (padding, no lost edges)</option><option value="fill">Fill panel (crop edges)</option></select></label>
+              <label>Facecam panel height %<input id="facecam-height" type="number" min="15" max="50"></label>
+              <p class="help">Full-frame gameplay retains its original embedded facecam. Hidden pixels cannot be reconstructed.</p>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Run a step</h2>
+            <label id="download-control" class="check" hidden><input id="approve-download" type="checkbox"> Approve downloading this video's full selected-quality source for this job only</label>
+            <p id="download-estimate" class="help"></p>
+            <div class="actions">
+              <button data-action="inspect">1. Inspect source</button>
+              <button data-action="analyze">2. Analyze highlights</button>
+              <button data-action="preview">3. Render preview</button>
+              <button data-action="render" class="primary">4. Export selected clips</button>
+            </div>
+            <p class="help">One heavy job at a time. Retry a stopped job to reuse valid completed checkpoints.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

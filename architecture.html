@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Local Clipper | End-to-end architecture</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e7490'/%3E%3Cpath d='M25 14h18v36H25z' fill='none' stroke='white' stroke-width='4'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #080e1a; --panel: #111b2b; --canvas: #0c1524;
+      --card: #162237; --text: #e6edf7; --muted: #9cacc1; --line: #2a3a50;
+      --cyan: #67d8ee; --green: #81dfa5; --purple: #c1a8ff; --amber: #ffcf83;
+      --blue: #92baff; --red: #ffa4a4;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 "Segoe UI", Arial, sans-serif; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    button:focus-visible, .node:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+    header { padding: 22px 28px 16px; border-bottom: 1px solid var(--line); }
+    .eyebrow { color: var(--cyan); font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; }
+    .heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    h1 { font-size: clamp(22px, 2.4vw, 32px); line-height: 1.2; margin: 5px 0 9px; font-weight: 650; letter-spacing: -.7px; }
+    .subtitle { margin: 0; max-width: 930px; color: var(--muted); }
+    .status { flex-shrink: 0; border: 1px solid #536044; color: #d3e6ab; border-radius: 8px; padding: 7px 12px; font-size: 11px; font-weight: 700; letter-spacing: .5px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
+    .chip { background: #152137; border: 1px solid #25354d; border-radius: 6px; padding: 3px 9px; color: #bbcce0; font-size: 12px; }
+    nav { display: flex; gap: 5px; padding: 12px 28px 0; overflow-x: auto; }
+    .tab { white-space: nowrap; border: 1px solid transparent; background: transparent; padding: 10px 15px; border-radius: 8px 8px 0 0; color: var(--muted); }
+    .tab[aria-selected="true"] { border-color: var(--line); border-bottom-color: var(--panel); background: var(--panel); color: var(--text); }
+    .tab .index { color: var(--cyan); font-size: 11px; margin-right: 7px; }
+    main { padding: 0 28px 24px; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: start; }
+    .diagram-pane, aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .toolbar { padding: 14px 18px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .toolbar h2 { font-size: 17px; margin: 0 0 3px; }
+    .toolbar p { color: var(--muted); font-size: 12px; margin: 0; max-width: 620px; }
+    .tools { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    .tools button { background: #19263b; border: 1px solid #35445c; border-radius: 5px; padding: 5px 9px; }
+    .tools button:hover { background: #253650; }
+    #zoom-value { color: var(--muted); min-width: 42px; text-align: center; font-size: 12px; }
+    .legend { display: flex; gap: 13px; flex-wrap: wrap; border-top: 1px solid #1e2d42; padding: 8px 18px; color: var(--muted); font-size: 11px; }
+    .dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; }
+    #viewport { height: min(74vh, 1050px); min-height: 430px; overflow: auto; background: var(--canvas); border-top: 1px solid var(--line); scrollbar-color: #3d506e var(--canvas); }
+    #diagram { display: block; }
+    .node { cursor: pointer; }
+    .node .box { transition: stroke-width .1s, fill .1s; }
+    .node:hover .box { fill: #20334e; stroke-width: 2; }
+    .node.selected .box { stroke: #f0f8ff; stroke-width: 2.6; }
+    .node text { pointer-events: none; }
+    .diagram-foot { padding: 9px 18px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
+    aside { padding: 19px; position: sticky; top: 14px; }
+    aside .eyebrow { margin-bottom: 7px; }
+    aside h2 { margin: 0 0 9px; font-size: 20px; line-height: 1.25; }
+    #detail-summary { color: #c3d0e0; font-size: 13px; }
+    aside h3 { margin: 17px 0 5px; color: var(--cyan); font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; }
+    aside p { margin: 0; }
+    aside ul { padding-left: 17px; margin: 5px 0 0; }
+    aside li { color: #c0cddd; font-size: 12px; margin: 5px 0; }
+    .reference { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+    .notice { margin-top: 14px; padding: 11px 15px; border: 1px solid #3c4653; border-radius: 8px; color: #c6d1de; background: #141d2a; font-size: 12px; }
+    .notice strong { color: var(--amber); }
+    footer { display: flex; justify-content: space-between; gap: 16px; padding: 0 28px 20px; color: #8193aa; font-size: 11px; }
+    noscript { display: block; padding: 24px; color: var(--amber); }
+    @media (max-width: 1050px) {
+      .workspace { grid-template-columns: minmax(0, 1fr); }
+      aside { position: static; }
+      .heading { align-items: flex-start; }
+      .toolbar { flex-direction: column; }
+    }
+    @media (max-width: 600px) {
+      header { padding: 16px; } nav { padding-left: 16px; } main { padding: 0 12px 18px; }
+      .heading { flex-direction: column; gap: 8px; }
+      .tab { padding: 9px 10px; font-size: 12px; }
+      #viewport { min-height: 400px; }
+      footer { padding: 0 16px 16px; flex-direction: column; gap: 3px; }
+    }
+    @media print {
+      header, nav, aside, .tools, .legend, .notice, footer, .diagram-foot { display: none; }
+      main { padding: 0; } .workspace { display: block; }
+      .diagram-pane { border: 0; }
+      #viewport { height: auto; min-height: 0; overflow: visible; }
+      #diagram { width: 100% !important; height: auto !important; }
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      @page { margin: 8mm; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Local Clipper / Architecture explorer</div>
+    <div class="heading">
+      <h1>Long video in. Framed, captioned clips out.</h1>
+      <div class="status">PROPOSED DESIGN / NOT IMPLEMENTED</div>
+    </div>
+    <p class="subtitle">Original, from-scratch local-first design. Trace the full journey, inspect a component's contract, and see how gameplay and facecam stay together.</p>
+    <div class="chips">
+      <span class="chip">9:16 only</span><span class="chip">Gaming + podcasts</span>
+      <span class="chip">English captions / original audio</span><span class="chip">8 GB baseline target</span>
+      <span class="chip">Review + automatic export</span><span class="chip">No paid APIs</span>
+    </div>
+  </header>
+  <nav role="tablist" aria-label="Architecture views">
+    <button class="tab" role="tab" id="tab-system" aria-controls="diagram-panel" data-view="system"><span class="index">01</span>System map</button>
+    <button class="tab" role="tab" id="tab-flow" aria-controls="diagram-panel" data-view="flow"><span class="index">02</span>End-to-end flow</button>
+    <button class="tab" role="tab" id="tab-layout" aria-controls="diagram-panel" data-view="layout"><span class="index">03</span>9:16 layouts</button>
+    <button class="tab" role="tab" id="tab-recovery" aria-controls="diagram-panel" data-view="recovery"><span class="index">04</span>Recovery + state</button>
+  </nav>
+  <main>
+    <div class="workspace">
+      <section class="diagram-pane" id="diagram-panel" role="tabpanel" aria-labelledby="tab-flow">
+        <div class="toolbar">
+          <div><h2 id="view-title"></h2><p id="view-description"></p></div>
+          <div class="tools" aria-label="Diagram controls">
+            <button id="zoom-out" aria-label="Zoom out">-</button><span id="zoom-value" aria-live="polite"></span>
+            <button id="zoom-in" aria-label="Zoom in">+</button><button id="fit">Fit width</button>
+            <button id="print">Print view</button>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="dot" style="background:#67d8ee"></i>Control / processing</span>
+          <span><i class="dot" style="background:#c1a8ff"></i>Local inference</span>
+          <span><i class="dot" style="background:#ffcf83"></i>Permission / user decision</span>
+          <span><i class="dot" style="background:#81dfa5"></i>Saved artifact / output</span>
+          <span>Dashed arrow = optional or return path</span>
+        </div>
+        <div id="viewport" aria-label="Scrollable architecture diagram"></div>
+        <div class="diagram-foot">Click a component for its inputs, outputs, invariants, and reuse notes. Scroll to follow the flow; zoom in for labels.</div>
+      </section>
+      <aside aria-label="Component details">
+        <div class="eyebrow" id="detail-tag">Design notes</div>
+        <h2 id="detail-title"></h2><p id="detail-summary"></p>
+        <div id="detail-sections"></div><div class="reference" id="detail-reference"></div>
+      </aside>
+    </div>
+    <div class="notice"><strong>Scope boundary:</strong> this is a target-design artifact, not a running clipping application or an Archify-generated file. Our application is original and built from scratch. RAM use, translation quality, and framing quality still require an approved hands-on evaluation. No dependency or media download is initiated by this page.</div>
+  </main>
+  <footer><span>Design snapshot: November 13, 2026 | Local HTML + inline SVG + JavaScript</span><span>No external assets, analytics, network calls, or account access.</span></footer>
+  <noscript>Enable JavaScript to display the inline diagrams. This file does not use any external scripts or services.</noscript>
+  <script>
+    "use strict";
+    const palette = { control: "#67d8ee", ai: "#c1a8ff", gate: "#ffcf83", store: "#81dfa5", error: "#ffa4a4", view: "#92baff" };
+    const details = {
+      overview: {
+        title: "Design, not implementation", tag: "How to read this",
+        summary: "An original application built from scratch: FastAPI/Pydantic, SQLite project/job state, a separate processing worker, and a lightweight local browser UI. Existing clippers are research references only; no application code is copied or vendored.",
+        sections: {
+          "Confirmed scope": ["9:16 is the only output aspect ratio.", "Gaming streams retain both gameplay and the streamer's facecam.", "Podcast mode uses a separate framing policy.", "Captions are English; source audio is not dubbed.", "Both review-before-export and automatic export are supported."],
+          "Still to approve or measure": ["Dependencies and models require explicit acquisition approval and an administrator-approved source.", "Never bypass an administrator's content restrictions.", "8 GB and 16 GB profiles are targets, not measured performance guarantees.", "This diagram describes target behavior; see README.md for implementation limits and verification status."]
+        },
+        reference: "Source review: mehbul/chopify; artbyjazi/autoclip; Steezy-code/clipper. FlowClip is a documentation-level layout reference. No projects were executed."
+      },
+      ui: {
+        title: "Local browser dashboard", tag: "Original / user interface",
+        summary: "The user chooses a file or URL, content mode, processing profile, clip preferences, and review or automatic export.",
+        sections: {
+          Inputs: ["File path or selected local file; optional YouTube URL.", "Gaming or podcast mode; 9:16 only.", "Low-memory / balanced profile; caption styling."],
+          Outputs: ["A saved project and a queued action.", "Editable clip ranges, English caption cues, and framing regions."],
+          Invariants: ["No cloud login or publishing integration.", "UI remains responsive while a worker runs.", "Automatic export is explicit per project; review is the proposed default."]
+        },
+        reference: "Original HTML/CSS/JavaScript interface. Research informed the project and review workflows, not the implementation code."
+      },
+      api: {
+        title: "Local control service", tag: "Original / control",
+        summary: "Serves the UI, validates project actions, exposes progress, and schedules work. It does not run inference in the request handler.",
+        sections: {
+          Inputs: ["Create project, prepare candidates, edit, render, cancel, or resume."],
+          Outputs: ["Project snapshots, progress, artifact locations, and actionable errors."],
+          Invariants: ["Bind to loopback, not a public interface.", "Validate source handles and project-local output paths.", "No use of the developer's GitHub credentials.", "Keep controls separate from heavy processing."]
+        },
+        reference: "Original FastAPI/Pydantic service. Loopback-only hosting, same-origin checks, mutation tokens, and separate worker execution."
+      },
+      project: {
+        title: "Project state and revisions", tag: "Original / persistence",
+        summary: "Use SQLite transactions for project revisions and job state. Keep large media and atomic analysis artifacts on disk outside the database.",
+        sections: {
+          Stores: ["Source identity, settings, stage status, clip selections, and edit revisions.", "Manifest entries linking artifacts to their input and configuration fingerprints."],
+          Invariants: ["Write state atomically after successful work.", "Changing caption appearance invalidates previews/exports, not speech recognition.", "Changing layout invalidates composition and rendering, not discovery.", "Changing source identity invalidates source-derived artifacts."],
+          "Proposed additions": ["Schema version, caption task/language, layout regions, model identity, and approval state must participate in relevant cache keys."]
+        },
+        reference: "Original storage implementation: SQLite WAL, schema versioning, optimistic revisions, and one active job per project."
+      },
+      consent: {
+        title: "Permission and dependency gate", tag: "New behavior / approval",
+        summary: "A missing model, tool, or requested video download pauses work instead of triggering an implicit fetch.",
+        sections: {
+          Inputs: ["Required local assets and an explicit import request."],
+          Outputs: ["An approved acquisition plan or a waiting state."],
+          Invariants: ["Ask before downloading models, tools, repositories, or video.", "Show origin, destination, and size estimate when known.", "Approval covers only the described acquisition; fallback to a full video needs approval if not already covered.", "No implicit browser-cookie extraction or GitHub authentication."],
+          "Offline behavior": ["Once required assets are approved and present, local-file processing stays offline.", "Declining a download leaves the local-file route available."]
+        },
+        reference: "Original permission boundary. Model adapters accept local assets only; the app never installs dependencies or pulls models."
+      },
+      queue: {
+        title: "Single processing queue", tag: "Original / scheduling",
+        summary: "One heavy job runs at a time. Other projects can wait while the interface stays available.",
+        sections: {
+          Inputs: ["Validated prepare/render/resume actions and a settings snapshot."],
+          Outputs: ["Worker execution, progress, terminal status, or waiting status."],
+          Invariants: ["8 GB profile: no concurrent ASR + LLM + rendering.", "Bound CPU threads and model context size.", "Persist status before launching work.", "On restart, mark unfinished work interrupted rather than silently successful."]
+        },
+        reference: "Original SQLite-backed queue and subprocess coordinator. An instance lock prevents two application coordinators using the same data directory."
+      },
+      worker: {
+        title: "Stage worker", tag: "Original / execution",
+        summary: "Runs bounded stages against saved artifacts. Process isolation keeps heavy libraries away from the UI request path.",
+        sections: {
+          Stages: ["Inspect -> analyze -> select -> compose/caption -> preview or export."],
+          Invariants: ["Process audio in bounded chunks; stream video frames instead of holding a full recording in RAM.", "Unload inference models between heavy stages in low-memory mode; isolate a stage process where needed.", "Read the source without modifying it.", "Check cancellation between chunks and terminate only owned child processes."]
+        },
+        reference: "Original worker implementation with owned-process cancellation, bounded speech chunks, and local stage logs."
+      },
+      source: {
+        title: "Local source media", tag: "Input / read only",
+        summary: "A selected local recording, or a file obtained through an explicitly approved URL import.",
+        sections: {
+          Inputs: ["Long gaming VOD or podcast; embedded source audio."],
+          Outputs: ["Stable source handle, dimensions, duration, rotation, and identity."],
+          Invariants: ["Never overwrite the original video.", "All clip times refer to a consistent source-media timeline.", "If the source changes, do not silently reuse stale analysis."]
+        },
+        reference: "Source identity and section offsets are already concepts in Chopify. Timestamp normalization is a design invariant for our extension."
+      },
+      youtube: {
+        title: "YouTube URL import", tag: "Optional / network boundary",
+        summary: "The URL route needs an approved acquisition step. The core pipeline consumes local media rather than depending on a live stream.",
+        sections: {
+          Inputs: ["User-supplied URL and import settings."],
+          Outputs: ["Approved local media plus available metadata."],
+          Invariants: ["Downloader is an adapter, not the application core.", "Unavailable metadata does not block clipping.", "Unsupported URLs produce a clear error and local-file alternative.", "No unapproved full-source fallback or account-cookie use."]
+        },
+        reference: "Proposed use of yt-dlp through Chopify's import layer. Availability and compatibility are not guaranteed."
+      },
+      inspect: {
+        title: "Preflight and media inspection", tag: "Original / prepare",
+        summary: "Verify that local dependencies and source streams are usable, then create disk-backed analysis inputs.",
+        sections: {
+          Inputs: ["Local media; approved installed assets; selected memory profile."],
+          Outputs: ["Source metadata, bounded audio chunks, and low-resolution analysis inputs."],
+          Invariants: ["A missing required asset transitions to waiting for approval.", "Handle rotation and media timestamps consistently.", "Skip ASR for a source without speech/audio rather than inventing a transcript.", "Check output space and keep analysis outputs separate from original media."]
+        },
+        reference: "References: Chopify download_and_transcribe.py, ingest.py, and projects.py. Permission preflight is our proposed addition."
+      },
+      analysis: {
+        title: "Local analysis and clip selection", tag: "Original / analysis",
+        summary: "Build compact speech, audio, and visual evidence. Choose candidate intervals using the content-specific policy.",
+        sections: {
+          Engines: ["faster-whisper for speech; OpenCV for sampled visual analysis.", "FFmpeg for media preparation; a local LLM is optional."],
+          Outputs: ["English text/cues, timestamped evidence, candidate ranges, selection reasons."],
+          Invariants: ["Gaming can produce candidates without speech.", "An inferred highlight score is not a measured audience-retention score.", "Analyze selected intervals in more detail only after shortlisting."]
+        },
+        reference: "References: Chopify evidence.py and projects.py. The explicit English-only caption contract is new."
+      },
+      speech: {
+        title: "Speech to English text", tag: "Original / local inference",
+        summary: "English audio is transcribed; supported non-English speech is translated into English. Original audio is retained.",
+        sections: {
+          Inputs: ["Bounded audio chunks, detected or overridden source language, and local model."],
+          Outputs: ["English words/segments with source times and timing provenance."],
+          Invariants: ["Use a multilingual translation-capable model for Hindi, not an English-only .en model.", "Do not use Whisper Turbo as the translation path.", "Translated English cues use phrase-level timing; do not claim exact Hindi-to-English word alignment.", "Preserve chunk offsets and deduplicate overlaps."],
+          "Memory target": ["Small multilingual model with CPU INT8 is the initial 8 GB candidate, not a proven whole-app memory guarantee."]
+        },
+        reference: "Original faster-whisper adapter: multilingual local models, explicit translation, source-time offsets, and chunk checkpoints."
+      },
+      signals: {
+        title: "Audio and visual evidence", tag: "Original / analysis",
+        summary: "Collect inexpensive timestamped signals without requiring a multimodal generative model.",
+        sections: {
+          Inputs: ["Audio stream and sampled low-resolution frames."],
+          Outputs: ["Relative audio peaks, motion/activity changes, shot boundaries, and available face observations."],
+          Invariants: ["Audio loudness alone is not proof of an interesting event.", "Keep pre-event context and reactions.", "Use per-recording baselines; preserve speech-free gaming candidates.", "Detailed face tracking is limited to selected clips."]
+        },
+        reference: "Reference: Chopify evidence.py streams audio features into a compact timeline. Optional richer event classifiers are outside the initial baseline."
+      },
+      replay: {
+        title: "Replay evidence, when available", tag: "Optional / imported metadata",
+        summary: "Public replay information may supplement selection for a URL import. It is not assumed to exist.",
+        sections: {
+          Inputs: ["Replay metadata returned during an approved source import, if accessible."],
+          Outputs: ["A nullable timeline tagged as actual replay evidence."],
+          Invariants: ["Missing replay data means unavailable, not zero engagement.", "Local files do not magically have viewer statistics.", "Continue with inferred signals when this input is absent.", "Do not require private YouTube Analytics or account authorization."]
+        },
+        reference: "Optional design capability. Availability must be checked per source; do not label inferred results as most-watched."
+      },
+      mode: {
+        title: "Content-specific policy", tag: "User decision / project setting",
+        summary: "Gaming and podcast selection share infrastructure, but use different criteria and framing policies.",
+        sections: {
+          Inputs: ["User-selected content mode and available evidence."],
+          Outputs: ["The appropriate candidate-generation and framing policy."],
+          Invariants: ["Do not infer the final product mode from loudness alone.", "A mode change invalidates selection/layout decisions, not unchanged media preparation.", "Keep a sensible route for missing speech or facecam."]
+        },
+        reference: "Confirmed product scope: gaming streams and podcasts."
+      },
+      podcast: {
+        title: "Podcast candidate selection", tag: "Original / editorial policy",
+        summary: "Prefer self-contained passages with a comprehensible opening and a complete ending.",
+        sections: {
+          Inputs: ["English transcript, speech boundaries, and optional replay/audio signals."],
+          Outputs: ["Candidate start/end times with selection reasons."],
+          Invariants: ["Avoid starting in the middle of a sentence or losing the setup.", "Refine boundaries against source evidence.", "Deduplicate heavily overlapping passages.", "Do not apply automatic silence removal by default just to make speech faster."]
+        },
+        reference: "Original deterministic candidate selection with optional local reranking. Editorial quality must be assessed with actual footage."
+      },
+      gaming: {
+        title: "Gaming candidate selection", tag: "Original / editorial policy",
+        summary: "Combine event/activity signals with streamer reactions and spoken context when available.",
+        sections: {
+          Inputs: ["Audio/visual activity, optional English transcript, and available replay evidence."],
+          Outputs: ["Candidate intervals containing the event lead-in and reaction."],
+          Invariants: ["No-speech highlights remain eligible.", "Do not equate every loud sound or scene change with a successful gameplay event.", "Game-specific event recognition is not promised in the generic first version.", "The layout must retain both gameplay and a valid facecam when present."]
+        },
+        reference: "References: Chopify's audio/visual evidence design. Game-specific recognizers would be separate later additions."
+      },
+      llm: {
+        title: "Optional local reranking", tag: "Optional / local inference",
+        summary: "A locally installed small model may improve ranking, but the basic pipeline does not depend on it.",
+        sections: {
+          Inputs: ["A bounded candidate shortlist and short supporting text."],
+          Outputs: ["Validated ranking adjustments and reasons, or the unchanged shortlist."],
+          Invariants: ["Use local inference only; no paid or cloud fallback.", "Select existing candidate IDs rather than invent source timestamps.", "If the model is disabled or unavailable, use deterministic ranking.", "Do not keep ASR and an LLM loaded together in the low-memory profile."]
+        },
+        reference: "Reference: Chopify's optional Ollama reranking approach. Exact model choice and context budget remain subject to evaluation."
+      },
+      selection: {
+        title: "Selected clip intervals", tag: "Saved artifact / selection",
+        summary: "Commit the shortlist as source-time intervals before detailed framing and rendering.",
+        sections: {
+          Contract: ["Clip ID, source start/end, reasons, evidence types, content mode, and revision."],
+          Invariants: ["Start/end must be finite, ordered, and within media bounds.", "Preserve meaningful boundaries and remove redundant candidates.", "Low confidence remains visible to the user.", "No result is described as guaranteed viral."]
+        },
+        reference: "Original validated clip contracts. Persist selections independently of rendering and caption edits."
+      },
+      composition: {
+        title: "9:16 composition plan", tag: "New / core design contract",
+        summary: "Describe how source regions map into a portrait canvas. This plan is the shared source of truth for preview and export.",
+        sections: {
+          Inputs: ["Selected clip, mode, source dimensions, face/region observations, and user overrides."],
+          Outputs: ["9:16 output dimensions; source-region tracks; destination panels; Fit/Fill; caption-safe area."],
+          Invariants: ["Gaming uses independent facecam and gameplay regions from the same source interval.", "Podcast mode uses a stable subject crop or a two-person layout.", "Manual regions override automatic estimates.", "Uncertain framing in automatic mode follows an agreed fallback or pauses for input; never silently discards a required facecam."],
+          "Proposed default": ["Preserve gameplay with Fit. Facecam above gameplay is an adjustable example, not a locked final template."]
+        },
+        reference: "References: Steezy-code/clipper layout.py and crop.py; FlowClip's documented region model. Chopify's existing split is not an arbitrary gaming-region compositor."
+      },
+      captions: {
+        title: "English caption track", tag: "Original / timed text",
+        summary: "Build readable English cues independently of their final placement and appearance.",
+        sections: {
+          Contract: ["Cue ID, start/end, English text, source language, timing kind, and edit revision."],
+          Invariants: ["English-source word timings can drive word highlighting.", "Translated captions are phrase-timed; any animated word reveal must not be presented as precise spoken-word alignment.", "Keep captions inside the safe area and away from facecam/HUD where possible.", "Changing cue text or style invalidates affected renders, not source evidence."]
+        },
+        reference: "Original ASS/SRT generation with safe text handling, clip-relative timing, and word highlighting only when source word timings exist."
+      },
+      route: {
+        title: "Review or automatic export", tag: "User decision / workflow",
+        summary: "Both routes consume the same selected clips, composition plans, and caption tracks.",
+        sections: {
+          "Review mode": ["Render small previews, allow trim/caption/region edits, then export selected clips."],
+          "Automatic mode": ["Use saved settings to export selected clips without mandatory per-clip review."],
+          Invariants: ["Automatic mode does not bypass download permission.", "Unresolved layout or input errors may still require user input.", "Review is the proposed default, not an imposed requirement for every job."]
+        },
+        reference: "Confirmed choice: support both reviewed and automatic export."
+      },
+      review: {
+        title: "Preview and manual correction", tag: "Original / user review",
+        summary: "Show lightweight previews and let the user adjust the specific things that need correction.",
+        sections: {
+          Inputs: ["Draft clips generated from the same plan used by final export."],
+          Outputs: ["Approved clip selections and versioned trim/caption/layout edits."],
+          Invariants: ["A visual edit does not trigger a new full-video transcript.", "If trim edits extend outside analyzed coverage, analyze only the new required interval.", "Edits invalidate only the relevant artifacts.", "Do not build a full multi-track video editor for this first version."]
+        },
+        reference: "Reference: Chopify prepare/review/render separation and cached preview artifacts."
+      },
+      automatic: {
+        title: "Automatic export route", tag: "Explicit project setting",
+        summary: "Proceed directly to final rendering once selection, captions, and framing have usable plans.",
+        sections: {
+          Inputs: ["Saved selection settings and a valid 9:16 layout template."],
+          Outputs: ["Final clips and a reviewable project record."],
+          Invariants: ["Optional review remains available afterward.", "Automatic does not imply unconditional success.", "Missing required assets or unresolved framing enters a visible waiting/error state."]
+        },
+        reference: "Original pipeline route controlled by the project's explicit automatic-export setting."
+      },
+      render: {
+        title: "FFmpeg preview / export", tag: "Original / rendering",
+        summary: "Render from original-quality source media using the composition plan and English caption track.",
+        sections: {
+          Inputs: ["Source interval, region tracks, 9:16 destination panels, caption track, and quality preset."],
+          Outputs: ["Small preview or final MP4; optional sidecar SRT."],
+          Invariants: ["Preview and final export use identical layout math.", "Map source audio once; do not duplicate it for the two panels.", "Preserve original audio language; do not synthesize dubbing.", "Use CPU encoding as baseline; hardware acceleration is optional.", "Write a temporary output, then publish it after successful completion."]
+        },
+        reference: "FFmpeg remains the render engine. Example final preset: 1080 x 1920; lower-resolution previews preserve 9:16."
+      },
+      artifacts: {
+        title: "Disk-backed analysis cache", tag: "Original / artifacts",
+        summary: "Persist expensive intermediate work so a style change or restart does not force a full re-analysis.",
+        sections: {
+          Stores: ["Audio chunks/proxies; transcript and caption tracks.", "Evidence timelines; candidate intervals; source-region/crop tracks.", "Composition plans; preview/export manifests."],
+          Invariants: ["Cache keys include relevant source, configuration, model, and schema identities.", "Incomplete stage outputs never masquerade as complete artifacts.", "Cleanup affects only project-owned temporary data.", "Keep original media and completed user exports outside automatic cleanup."]
+        },
+        reference: "Reference: Chopify's stage caches and atomic project writes. Finer-grained invalidation is part of our LLD."
+      },
+      outputs: {
+        title: "Completed local outputs", tag: "Output / persistent",
+        summary: "The result is a local set of 9:16 clips plus the saved project needed to revise them later.",
+        sections: {
+          Outputs: ["Selected 9:16 MP4 clips.", "English burned-in captions and optional SRT.", "Saved source intervals, layout plans, settings, and export status."],
+          Invariants: ["No automatic upload or social publishing.", "Do not overwrite existing outputs silently.", "Preserve successful clips if another clip fails.", "A changed layout or caption can be exported as a new revision."]
+        },
+        reference: "Confirmed output scope. Publishing, dubbing, 4:5, and model training are not in this design."
+      },
+      regions: {
+        title: "Two source regions, one timeline", tag: "New / gaming composition",
+        summary: "A source rectangle and an output panel are different things. Keeping that distinction explicit avoids hard-coded crop behavior.",
+        sections: {
+          Contract: ["Region role, normalized source rectangle, valid time range, and optional track keyframes.", "Destination rectangle on the 9:16 canvas plus Fit/Fill policy."],
+          Invariants: ["Facecam and gameplay sample the exact same source time.", "Track only inside the confirmed facecam region for gaming.", "A changing stream layout can require region updates or input.", "Pixels hidden under a baked-in facecam are not recoverable by rearranging crops."],
+          "Visual tradeoff": ["Fit preserves the selected region and can leave padding.", "Fill occupies the panel but crops source edges.", "Enlarging a tiny facecam does not create missing facial detail."]
+        },
+        reference: "Reference: Steezy-code/clipper's stream compositor. Its automatic estimate is not guaranteed to match the true webcam border."
+      },
+      tracking: {
+        title: "Stable podcast framing", tag: "Original / camera policy",
+        summary: "Use scene-aware subject tracks to drive a calm virtual camera, not a new crop for every noisy face detection.",
+        sections: {
+          Inputs: ["Selected clip, scene cuts, face tracks, and optional speaker evidence."],
+          Outputs: ["A crop path or stable multi-person panel layout."],
+          Invariants: ["Use a dead zone and movement limits.", "Do not interpolate a camera pan across a hard shot cut.", "Hold briefly through missed detections; then use a conservative fallback.", "Face detection alone is not active-speaker detection.", "Two-person layout or manual subject selection remains a fallback."]
+        },
+        reference: "Reference: AutoClip's scene/track/speaker separation. Automatic speaker quality remains unverified."
+      },
+      draft: {
+        title: "Draft project", tag: "Proposed job lifecycle",
+        summary: "Settings are saved, but heavy processing has not begun.",
+        sections: { Transitions: ["Queue after source and settings are valid.", "Request approval when a required acquisition is missing."], Invariants: ["Saving a draft does not download assets.", "Keep source selection separate from authorization to acquire new content."] },
+        reference: "Original job states: queued, running, cancelling, cancelled, succeeded, failed, blocked, and interrupted."
+      },
+      running: {
+        title: "Running stage", tag: "Proposed job lifecycle",
+        summary: "One worker owns the active action and records stage progress and successful checkpoints.",
+        sections: { Transitions: ["Review mode -> needs review.", "Automatic mode -> rendering.", "Missing asset -> waiting for approval/input.", "Failure or restart -> failed/interrupted.", "Explicit cancel -> cancelled."], Invariants: ["Progress refers to a real stage and completed work, not invented completion percentages.", "Persist completed artifacts before advancing.", "All terminal states are distinguishable."] },
+        reference: "Original worker progress and interruption handling, with explicit blocked and cancellation outcomes."
+      },
+      failed: {
+        title: "Failed or interrupted", tag: "Recovery / not successful",
+        summary: "An error or process restart must not erase completed work or present a partial file as a finished clip.",
+        sections: { Outputs: ["Failed stage, reason, completed artifacts, and retryable action."], Invariants: ["Keep successful clips.", "Mark partial outputs incomplete.", "Never retry a denied download or change acquisition scope silently.", "Recover the worker without killing unrelated processes."] },
+        reference: "Reference: Chopify keeps project state and some completed outputs. Full failure/cancellation coverage still needs implementation evaluation."
+      },
+      resume: {
+        title: "Resume from valid checkpoints", tag: "Recovery / explicit action",
+        summary: "Validate cached artifacts and resume the first incomplete or invalidated stage.",
+        sections: { Inputs: ["Saved project revision, source identity, stage results, and available models."], Outputs: ["A new queued action reusing valid work."], Invariants: ["A cache hit requires matching dependencies and complete artifacts.", "Do not rerun ASR for a caption-style change.", "Do not reuse results after the source or relevant model/task changed.", "Request any newly needed permission before acquisition."] },
+        reference: "Reference: Chopify chunk and render checkpoint mechanisms. Translation/layout changes must extend cache identity."
+      },
+      cancelled: {
+        title: "Cancelled by user", tag: "Recovery / explicit stop",
+        summary: "Stop the owned processing action while retaining the original source and completed artifacts.",
+        sections: { Invariants: ["Cancellation is available from queued or active work.", "Terminate only worker-owned processes and wait for them to exit.", "Do not mark a partially written export completed.", "A later resume revalidates the checkpoint, rather than continuing a corrupt output."] },
+        reference: "Original owned-process cancellation. Full worker and media-runtime behavior still requires execution verification."
+      }
+    };
+
+    function n(id, detail, x, y, title, sub, kind = "control", badge = "DESIGN", w = 300, h = 98) {
+      return { id, detail, x, y, w, h, title: Array.isArray(title) ? title : [title], sub: Array.isArray(sub) ? sub : [sub], kind, badge };
+    }
+    function e(from, to, options = {}) { return { from, to, fp: "b", tp: "t", ...options }; }
+    const views = {
+      system: {
+        title: "System map / HLD",
+        description: "What runs locally, who owns the work, and where project data persists. All application modules are original; libraries and models remain separate dependencies.",
+        width: 1120, height: 960, initial: "overview",
+        bands: [{ y: 25, h: 175, label: "LOCAL USER + CONTROL" }, { y: 245, h: 180, label: "PERMISSION + SERIAL EXECUTION" }, { y: 490, h: 175, label: "MEDIA PROCESSING" }, { y: 745, h: 175, label: "PERSISTENT, PROJECT-OWNED DATA" }],
+        nodes: [
+          n("ui", "ui", 50, 75, "Browser dashboard", "Original HTML / CSS / JavaScript", "view", "ORIGINAL"),
+          n("api", "api", 410, 75, "Local control service", "Loopback FastAPI / Pydantic", "control", "ORIGINAL"),
+          n("project", "project", 770, 75, "Project state", "SQLite transactions + revisions", "store", "ORIGINAL"),
+          n("consent", "consent", 50, 295, "Permission gate", "Approve downloads before work", "gate", "NEW BEHAVIOR"),
+          n("queue", "queue", 410, 295, "One processing queue", "One heavy job at a time", "control", "ORIGINAL"),
+          n("worker", "worker", 770, 295, "Stage worker", "Owned child processes; checkpoints", "control", "ORIGINAL"),
+          n("source", "source", 50, 540, "Original local media", "Local file or approved URL import", "store", "READ ONLY"),
+          n("analysis", "analysis", 410, 540, "Analyze + select clips", "Local speech / vision; optional LLM", "ai", "ORIGINAL"),
+          n("render", "render", 770, 540, "Compose + render", "One 9:16 plan for preview / export", "control", "ORIGINAL"),
+          n("artifacts", "artifacts", 410, 800, "Saved analysis artifacts", "Chunks, cues, regions, clip plans", "store", "ORIGINAL"),
+          n("outputs", "outputs", 770, 800, "Local clips + sidecars", "MP4 / English captions / project", "store", "OUTPUT")
+        ],
+        edges: [
+          e("ui", "api", { fp: "r", tp: "l", label: "actions", at: [380, 110] }),
+          e("api", "project", { fp: "r", tp: "l", label: "save", at: [740, 110] }),
+          e("api", "queue", { label: "enqueue", at: [603, 230] }),
+          e("consent", "queue", { fp: "r", tp: "l", label: "ready", at: [380, 327] }),
+          e("queue", "worker", { fp: "r", tp: "l", label: "run", at: [740, 327] }),
+          e("worker", "project", { fp: "t", tp: "b", label: "checkpoint status", at: [990, 230] }),
+          e("worker", "analysis", { via: [[920, 465], [560, 465]] }),
+          e("worker", "render", { label: "stages", at: [962, 465] }),
+          e("source", "analysis", { fp: "r", tp: "l", label: "read", at: [380, 573] }),
+          e("analysis", "render", { fp: "r", tp: "l", label: "plans", at: [740, 573] }),
+          e("analysis", "artifacts", { label: "checkpoint", at: [610, 727] }),
+          e("artifacts", "render", { fp: "r", tp: "l", via: [[740, 849], [740, 623]], endOffset: 34, optional: true }),
+          e("render", "outputs", { label: "publish on success", at: [920, 727] })
+        ]
+      },
+      flow: {
+        title: "End-to-end processing / workflow",
+        description: "Follow top to bottom. Fan-out shows data dependencies, not concurrent inference. Both export modes share the same plans.",
+        width: 1120, height: 2280, initial: "overview",
+        bands: [{ y: 25, h: 425, label: "01 / SOURCE, PERMISSION, PREFLIGHT" }, { y: 490, h: 170, label: "02 / BUILD TIMESTAMPED EVIDENCE" }, { y: 695, h: 585, label: "03 / CONTENT-SPECIFIC SELECTION" }, { y: 1310, h: 300, label: "04 / FRAME + CAPTION THE SELECTED CLIPS" }, { y: 1640, h: 610, label: "05 / REVIEW OR AUTOMATIC EXPORT" }],
+        nodes: [
+          n("local", "source", 50, 75, "Local video file", "Already on disk; original is read only", "store", "INPUT"),
+          n("url", "youtube", 770, 75, "YouTube URL", "Optional import route", "gate", "NETWORK REQUEST"),
+          n("approval", "consent", 770, 220, "Approve acquisition", "No implicit media or model fetch", "gate", "PERMISSION"),
+          n("inspect", "inspect", 410, 335, "Preflight + inspect media", "Prepare disk-backed analysis inputs", "control", "ORIGINAL"),
+          n("speech", "speech", 50, 535, "Speech -> English text", "English ASR / translated phrase cues", "ai", "EXTEND"),
+          n("signals", "signals", 410, 535, "Audio + visual evidence", "Activity, reactions, shots, faces", "ai", "ORIGINAL"),
+          n("replay", "replay", 770, 535, "Available replay metadata", "Absent is OK; never invent statistics", "gate", "OPTIONAL"),
+          n("mode", "mode", 410, 745, "Gaming or podcast?", "User-selected content policy", "gate", "PROJECT SETTING"),
+          n("podcast", "podcast", 50, 900, "Podcast candidates", "Complete ideas, setup, useful endings", "ai", "EDITORIAL POLICY"),
+          n("gaming", "gaming", 770, 900, "Gaming candidates", "Event context + reaction; speech optional", "ai", "EDITORIAL POLICY"),
+          n("llm", "llm", 410, 1055, "Optional local rerank", "Disabled? Keep deterministic ranking", "ai", "NO CLOUD FALLBACK"),
+          n("selection", "selection", 410, 1200, "Save selected intervals", "Refine boundaries; deduplicate", "store", "CHECKPOINT"),
+          n("composition", "composition", 410, 1360, "Plan 9:16 composition", "Gaming regions / stable podcast framing", "control", "NEW CONTRACT"),
+          n("captions", "captions", 410, 1505, "Build English captions", "Readable cues + placement + edits", "control", "EXTEND"),
+          n("route", "route", 410, 1690, "Review or automatic?", "Explicit export workflow setting", "gate", "BOTH SUPPORTED"),
+          n("review", "review", 50, 1845, "Preview + approve clips", "Correct trim, regions, or captions", "view", "REVIEW MODE"),
+          n("auto", "automatic", 770, 1845, "Use saved selections", "No mandatory per-clip review", "control", "AUTOMATIC MODE"),
+          n("render", "render", 410, 2000, "Render from original media", "Shared layout math; original audio once", "control", "FFMPEG"),
+          n("outputs", "outputs", 410, 2150, "9:16 clips + English captions", "Local MP4 / optional SRT / saved project", "store", "OUTPUT")
+        ],
+        edges: [
+          e("url", "approval", { label: "ask first", at: [972, 195] }),
+          e("local", "inspect", { via: [[200, 300], [560, 300]] }),
+          e("approval", "inspect", { via: [[920, 320], [560, 320]] }),
+          e("inspect", "speech", { via: [[560, 475], [200, 475]] }),
+          e("inspect", "signals"),
+          e("inspect", "replay", { via: [[560, 475], [920, 475]], optional: true }),
+          e("speech", "mode", { via: [[200, 680], [560, 680]] }),
+          e("signals", "mode"),
+          e("replay", "mode", { via: [[920, 680], [560, 680]], optional: true }),
+          e("mode", "podcast", { via: [[560, 865], [200, 865]], label: "podcast", at: [275, 850] }),
+          e("mode", "gaming", { via: [[560, 865], [920, 865]], label: "gaming", at: [846, 850] }),
+          e("podcast", "llm", { via: [[200, 1025], [560, 1025]] }),
+          e("gaming", "llm", { via: [[920, 1025], [560, 1025]] }),
+          e("llm", "selection"),
+          e("selection", "composition"),
+          e("composition", "captions"),
+          e("captions", "route"),
+          e("route", "review", { via: [[560, 1815], [200, 1815]], label: "review", at: [278, 1800] }),
+          e("route", "auto", { via: [[560, 1815], [920, 1815]], label: "automatic", at: [835, 1800] }),
+          e("review", "render", { via: [[200, 1970], [560, 1970]] }),
+          e("auto", "render", { via: [[920, 1970], [560, 1970]] }),
+          e("review", "composition", { fp: "l", tp: "l", via: [[25, 1894], [25, 1409]], optional: true, label: "edit plan; reuse valid analysis", at: [219, 1388] }),
+          e("render", "outputs")
+        ]
+      },
+      layout: {
+        title: "Source regions -> 9:16 composition",
+        description: "Illustrative templates, not locked panel sizes. Click a source region, portrait preview, or contract card for details.",
+        width: 1120, height: 1430, initial: "regions", illustration: true,
+        bands: [{ y: 25, h: 580, label: "GAMING / SAME SOURCE TIME, TWO INDEPENDENT REGIONS" }, { y: 635, h: 550, label: "PODCAST / A DIFFERENT FRAMING POLICY" }],
+        nodes: [
+          n("regions", "regions", 50, 1250, "Source-region contract", "Role + rectangle + time + track", "control", "LLD"),
+          n("composition", "composition", 410, 1250, "Composition contract", "Destination panels + Fit / Fill", "control", "LLD"),
+          n("captions", "captions", 770, 1250, "Caption contract", "English cues + timing provenance", "ai", "LLD")
+        ],
+        edges: [e("regions", "composition", { fp: "r", tp: "l" }), e("composition", "captions", { fp: "r", tp: "l" })]
+      },
+      recovery: {
+        title: "Job lifecycle / restart and edit behavior",
+        description: "A proposed state contract. Success, waiting, interruption, and cancellation must remain distinguishable.",
+        width: 1120, height: 1160, initial: "project",
+        bands: [{ y: 25, h: 180, label: "START AN ACTION" }, { y: 265, h: 180, label: "PERMISSION IS NEVER BYPASSED" }, { y: 500, h: 180, label: "REVIEW, RENDER, OR RECOVER" }, { y: 775, h: 180, label: "EXPLICIT NEXT ACTION / TERMINAL OUTCOME" }],
+        nodes: [
+          n("draft", "draft", 50, 80, "DRAFT", "Save project settings; no downloads", "store", "STATE"),
+          n("queued", "queue", 410, 80, "QUEUED", "One action waits for a worker", "control", "STATE"),
+          n("running", "running", 770, 80, "RUNNING", "Stage progress + atomic checkpoints", "control", "STATE"),
+          n("waiting", "consent", 410, 315, "WAITING FOR APPROVAL / INPUT", "Missing asset or unresolved framing", "gate", "WAIT STATE"),
+          n("failed", "failed", 50, 550, "FAILED / INTERRUPTED", "Keep completed work; explain why", "error", "RECOVERABLE"),
+          n("review", "review", 410, 550, "NEEDS REVIEW", "Preview, correct, select, approve", "gate", "REVIEW MODE"),
+          n("render", "render", 770, 550, "RENDERING", "Publish only completed outputs", "control", "STATE"),
+          n("resume", "resume", 50, 825, "RESUME / RETRY", "Validate cache; queue missing work", "control", "EXPLICIT ACTION"),
+          n("cancelled", "cancelled", 410, 825, "CANCELLED", "Available from queued / active work", "error", "EXPLICIT STOP"),
+          n("done", "outputs", 770, 825, "COMPLETED", "Outputs + saved editable project", "store", "TERMINAL")
+        ],
+        edges: [
+          e("draft", "queued", { fp: "r", tp: "l" }),
+          e("queued", "running", { fp: "r", tp: "l" }),
+          e("running", "waiting", { fp: "l", tp: "r", via: [[740, 129], [740, 364]], label: "needs input", at: [804, 245] }),
+          e("waiting", "queued", { fp: "t", tp: "b", optional: true, label: "approved / resolved", at: [560, 245] }),
+          e("running", "review", { via: [[920, 475], [560, 475]], label: "review mode", at: [717, 460] }),
+          e("running", "render", { fp: "r", tp: "r", via: [[1090, 129], [1090, 599]], label: "auto", at: [1063, 465] }),
+          e("running", "failed", { fp: "t", tp: "t", via: [[920, 10], [25, 10], [25, 495], [200, 495]], optional: true }),
+          e("review", "render", { fp: "r", tp: "l", label: "approve", at: [740, 582] }),
+          e("failed", "resume", { label: "user retries", at: [200, 746] }),
+          e("resume", "queued", { fp: "l", tp: "l", via: [[15, 874], [15, 230], [380, 230], [380, 129]], optional: true }),
+          e("render", "done", { label: "success", at: [920, 746] }),
+          e("review", "cancelled", { label: "cancel / stop", at: [560, 746] })
+        ],
+        notes: [
+          { x: 50, y: 1015, title: "SMALL EDIT, SMALL RECOMPUTE", lines: ["Caption style -> render only. Layout change -> composition + render.", "Trim beyond analyzed coverage -> analyze only the newly required interval."] },
+          { x: 610, y: 1015, title: "PARTIAL SUCCESS IS NOT LOST", lines: ["Keep completed clips and valid checkpoints. Do not overwrite originals.", "Cancellation and errors can occur at any active stage, not only review."] }
+        ]
+      }
+    };
+
+    // Browser rendering.
+    const NS = "http://www.w3.org/2000/svg";
+    const viewport = document.getElementById("viewport");
+    let activeView = "flow";
+    let zoom = 1;
+    let svg;
+    function el(name, attrs = {}, parent, content) {
+      const item = document.createElementNS(NS, name);
+      for (const [key, value] of Object.entries(attrs)) item.setAttribute(key, value);
+      if (content !== undefined) item.textContent = content;
+      if (parent) parent.appendChild(item);
+      return item;
+    }
+    function text(parent, x, y, value, attrs = {}) {
+      return el("text", { x, y, fill: "#e6edf7", "font-family": "Segoe UI, Arial, sans-serif", "font-size": 14, ...attrs }, parent, value);
+    }
+    function point(node, port, offset = 0) {
+      return { t: [node.x + node.w / 2 + offset, node.y], b: [node.x + node.w / 2 + offset, node.y + node.h],
+        l: [node.x, node.y + node.h / 2 + offset], r: [node.x + node.w, node.y + node.h / 2 + offset] }[port];
+    }
+    function label(parent, x, y, value, color = "#afc0d7") {
+      const width = value.length * 6.7 + 16;
+      el("rect", { x: x - width / 2, y: y - 14, width, height: 21, rx: 5, fill: "#0c1524" }, parent);
+      text(parent, x, y, value, { "font-size": 11, fill: color, "text-anchor": "middle" });
+    }
+    function drawEdge(edge, map) {
+      const start = point(map.get(edge.from), edge.fp, edge.startOffset || 0);
+      const end = point(map.get(edge.to), edge.tp, edge.endOffset || 0);
+      const pts = [start, ...(edge.via || []), end];
+      el("path", { d: pts.map((p, i) => `${i ? "L" : "M"} ${p[0]} ${p[1]}`).join(" "), fill: "none", stroke: edge.optional ? "#a796ce" : "#6e91b6",
+        "stroke-width": 1.8, "stroke-linejoin": "round", "stroke-dasharray": edge.optional ? "6 5" : "none", "marker-end": "url(#arrow)" }, svg);
+      if (edge.label) label(svg, edge.at[0], edge.at[1], edge.label, edge.optional ? "#c1a8ff" : "#b6c8df");
+    }
+    function interactive(group, detailKey, title) {
+      group.setAttribute("class", "node");
+      group.setAttribute("role", "button");
+      group.setAttribute("tabindex", "0");
+      group.setAttribute("aria-label", `Inspect ${title}`);
+      group.dataset.detail = detailKey;
+      group.addEventListener("click", () => selectDetail(detailKey, group));
+      group.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectDetail(detailKey, group); }
+      });
+    }
+    function drawNode(node) {
+      const group = el("g", {}, svg);
+      interactive(group, node.detail, node.title.join(" "));
+      el("title", {}, group, `${node.title.join(" ")}. ${details[node.detail].summary}`);
+      const color = palette[node.kind];
+      el("rect", { x: node.x, y: node.y, width: node.w, height: node.h, rx: 10, fill: "#162237", stroke: color, "stroke-opacity": .7, class: "box" }, group);
+      el("rect", { x: node.x + 1, y: node.y + 13, width: 3, height: node.h - 26, rx: 2, fill: color }, group);
+      text(group, node.x + 17, node.y + 20, node.badge, { fill: color, "font-size": 9, "font-weight": 700, "letter-spacing": 1 });
+      node.title.forEach((line, i) => text(group, node.x + 17, node.y + 45 + i * 18, line, { "font-size": line.length > 29 ? 13 : 15, "font-weight": 600 }));
+      node.sub.forEach((line, i) => text(group, node.x + 17, node.y + 69 + (node.title.length - 1) * 18 + i * 15, line, { fill: "#a9bad0", "font-size": 11 }));
+    }
+    function selectDetail(key, group) {
+      const data = details[key];
+      document.getElementById("detail-tag").textContent = data.tag;
+      document.getElementById("detail-title").textContent = data.title;
+      document.getElementById("detail-summary").textContent = data.summary;
+      const root = document.getElementById("detail-sections");
+      root.replaceChildren();
+      for (const [heading, entries] of Object.entries(data.sections)) {
+        const h = document.createElement("h3"); h.textContent = heading; root.appendChild(h);
+        const list = document.createElement("ul");
+        for (const entry of entries) { const li = document.createElement("li"); li.textContent = entry; list.appendChild(li); }
+        root.appendChild(list);
+      }
+      document.getElementById("detail-reference").textContent = data.reference;
+      if (svg) svg.querySelectorAll(".node").forEach(node => {
+        const selected = node === group;
+        node.classList.toggle("selected", selected);
+        node.setAttribute("aria-pressed", String(selected));
+      });
+    }
+    function avatar(parent, x, y, scale, color) {
+      el("circle", { cx: x, cy: y, r: 17 * scale, fill: color, opacity: .9 }, parent);
+      el("path", { d: `M ${x - 34 * scale} ${y + 60 * scale} Q ${x - 34 * scale} ${y + 21 * scale} ${x} ${y + 23 * scale} Q ${x + 34 * scale} ${y + 21 * scale} ${x + 34 * scale} ${y + 60 * scale} Z`, fill: color, opacity: .5 }, parent);
+    }
+    function game(parent, x, y, w, h) {
+      el("rect", { x, y, width: w, height: h, fill: "#183438" }, parent);
+      for (let i = 1; i < 8; i++) el("path", { d: `M ${x + i * w / 8} ${y} V ${y + h}`, stroke: "#2b4d50", "stroke-width": 1 }, parent);
+      for (let i = 1; i < 5; i++) el("path", { d: `M ${x} ${y + i * h / 5} H ${x + w}`, stroke: "#2b4d50", "stroke-width": 1 }, parent);
+      el("path", { d: `M ${x + w * .18} ${y + h * .7} L ${x + w * .4} ${y + h * .55} L ${x + w * .55} ${y + h * .7} L ${x + w * .8} ${y + h * .25}`, fill: "none", stroke: "#72d69a", "stroke-width": 3 }, parent);
+      el("circle", { cx: x + w * .55, cy: y + h * .7, r: w * .025, fill: "#bef5ce" }, parent);
+      el("rect", { x: x + w * .035, y: y + h * .055, width: w * .2, height: h * .06, rx: 3, fill: "#9bd5ac", opacity: .6 }, parent);
+      el("rect", { x: x + w * .82, y: y + h * .72, width: w * .14, height: h * .22, fill: "#467468", stroke: "#8bc4a2" }, parent);
+    }
+    function drawLayouts() {
+      const source = el("g", {}, svg); interactive(source, "source", "gaming source recording");
+      el("rect", { x: 50, y: 120, width: 512, height: 288, rx: 3, fill: "#183438", stroke: "#81dfa5", class: "box" }, source);
+      game(source, 52, 122, 508, 284);
+      text(svg, 50, 100, "SOURCE RECORDING / 16:9", { fill: "#9cacc1", "font-size": 12, "font-weight": 600 });
+      text(svg, 50, 439, "Gameplay and facecam are already baked into one frame.", { fill: "#b1c2d6", "font-size": 13 });
+      text(svg, 50, 463, "Keep source timing; do not create two independent audio tracks.", { fill: "#9cacc1", "font-size": 12 });
+      const face = el("g", {}, svg); interactive(face, "regions", "facecam source region");
+      el("rect", { x: 436, y: 138, width: 106, height: 86, fill: "#273452", stroke: "#67d8ee", "stroke-width": 2, class: "box" }, face);
+      avatar(face, 489, 164, .6, "#a9c8ff");
+      text(face, 489, 215, "FACECAM", { "text-anchor": "middle", "font-size": 9, fill: "#d1e8ff" });
+      const out = el("g", {}, svg); interactive(out, "composition", "gaming portrait composition");
+      el("rect", { x: 770, y: 90, width: 270, height: 480, rx: 6, fill: "#192338", stroke: "#67d8ee", "stroke-width": 2, class: "box" }, out);
+      el("rect", { x: 773, y: 93, width: 264, height: 127, fill: "#273452" }, out);
+      avatar(out, 905, 128, 1.1, "#a9c8ff");
+      text(out, 905, 241, "GAMEPLAY PANEL / FIT", { "font-size": 10, fill: "#81dfa5", "text-anchor": "middle", "letter-spacing": 1 });
+      game(out, 773, 295, 264, 148.5);
+      el("rect", { x: 973, y: 303, width: 55, height: 45, fill: "#273452", stroke: "#67d8ee", "stroke-width": 1 }, out);
+      avatar(out, 1000, 317, .3, "#a9c8ff");
+      text(out, 905, 477, "Whole selected region preserved", { "text-anchor": "middle", "font-size": 11, fill: "#a8bdce" });
+      el("rect", { x: 792, y: 506, width: 226, height: 36, rx: 6, fill: "#080e1a", opacity: .9 }, out);
+      text(out, 905, 529, "ENGLISH CAPTION HERE", { "font-size": 12, "font-weight": 700, "text-anchor": "middle", fill: "#ffffff" });
+      text(svg, 905, 72, "OUTPUT / 9:16", { "text-anchor": "middle", fill: "#67d8ee", "font-size": 12, "font-weight": 600 });
+      el("path", { d: "M 542 181 H 680 V 155 H 770", fill: "none", stroke: "#67d8ee", "stroke-width": 2, "marker-end": "url(#arrow)" }, svg);
+      label(svg, 654, 136, "facecam region");
+      el("path", { d: "M 562 351 H 770", fill: "none", stroke: "#81dfa5", "stroke-width": 2, "marker-end": "url(#arrow)" }, svg);
+      label(svg, 666, 333, "gameplay region", "#81dfa5");
+      text(svg, 50, 516, "FIT = keep the selected image, with padding if necessary.", { fill: "#81dfa5", "font-size": 12 });
+      text(svg, 50, 488, "The original small facecam remains when included in the gameplay region.", { fill: "#ffcf83", "font-size": 11 });
+      text(svg, 50, 541, "FILL = occupy the panel, with possible cropping at the edges.", { fill: "#ffcf83", "font-size": 12 });
+      text(svg, 50, 566, "Illustrative panel sizes. Placement and safe areas remain editable.", { fill: "#9cacc1", "font-size": 12 });
+
+      const podcast = el("g", {}, svg); interactive(podcast, "tracking", "podcast source and subject tracks");
+      el("rect", { x: 50, y: 730, width: 512, height: 288, rx: 3, fill: "#28263d", stroke: "#c1a8ff", class: "box" }, podcast);
+      el("rect", { x: 65, y: 748, width: 482, height: 192, rx: 4, fill: "#37334b" }, podcast);
+      avatar(podcast, 200, 800, 1.55, "#c1a8ff");
+      avatar(podcast, 414, 800, 1.55, "#8bbaf3");
+      el("rect", { x: 96, y: 939, width: 420, height: 24, fill: "#78634d" }, podcast);
+      el("rect", { x: 115, y: 751, width: 165, height: 245, rx: 4, fill: "none", stroke: "#c1a8ff", "stroke-width": 2, "stroke-dasharray": "8 5" }, podcast);
+      text(svg, 50, 710, "PODCAST SOURCE / TWO PEOPLE", { fill: "#9cacc1", "font-size": 12, "font-weight": 600 });
+      const portrait = el("g", {}, svg); interactive(portrait, "tracking", "podcast portrait framing");
+      el("rect", { x: 770, y: 690, width: 270, height: 480, rx: 6, fill: "#28263d", stroke: "#c1a8ff", "stroke-width": 2, class: "box" }, portrait);
+      avatar(portrait, 905, 815, 2.65, "#c1a8ff");
+      el("rect", { x: 787, y: 1073, width: 236, height: 48, rx: 6, fill: "#080e1a" }, portrait);
+      text(portrait, 905, 1103, "ENGLISH CAPTION HERE", { "font-size": 12, "font-weight": 700, "text-anchor": "middle" });
+      text(svg, 905, 674, "OUTPUT / 9:16", { fill: "#c1a8ff", "font-size": 12, "font-weight": 600, "text-anchor": "middle" });
+      el("path", { d: "M 562 870 H 770", fill: "none", stroke: "#c1a8ff", "stroke-width": 2, "marker-end": "url(#arrow)" }, svg);
+      label(svg, 666, 850, "stable crop path", "#c1a8ff");
+      text(svg, 50, 1057, "Hold the subject, smooth motion, and reset at camera cuts.", { fill: "#c7b9e8", "font-size": 12 });
+      text(svg, 50, 1082, "Fallback: stable two-person panels or manual subject selection.", { fill: "#9cacc1", "font-size": 12 });
+      text(svg, 50, 1107, "Finding a face is not the same as identifying who is speaking.", { fill: "#ffcf83", "font-size": 12 });
+      text(svg, 50, 1132, "Do not inherit the gaming facecam policy for podcast footage.", { fill: "#9cacc1", "font-size": 12 });
+    }
+    function applyZoom(value) {
+      zoom = Math.min(1.7, Math.max(.45, value));
+      const view = views[activeView];
+      svg.setAttribute("width", Math.round(view.width * zoom));
+      svg.setAttribute("height", Math.round(view.height * zoom));
+      document.getElementById("zoom-value").textContent = `${Math.round(zoom * 100)}%`;
+    }
+    function fitWidth() { applyZoom((viewport.clientWidth - 18) / views[activeView].width); }
+    function showView(id) {
+      activeView = Object.hasOwn(views, id) ? id : "flow";
+      const view = views[activeView];
+      document.querySelectorAll("[data-view]").forEach(button => {
+        const active = button.dataset.view === activeView;
+        button.setAttribute("aria-selected", String(active)); button.tabIndex = active ? 0 : -1;
+      });
+      document.getElementById("diagram-panel").setAttribute("aria-labelledby", `tab-${activeView}`);
+      document.getElementById("view-title").textContent = view.title;
+      document.getElementById("view-description").textContent = view.description;
+      viewport.replaceChildren();
+      svg = el("svg", { id: "diagram", viewBox: `0 0 ${view.width} ${view.height}`, xmlns: NS, role: "group", "aria-label": view.title }, viewport);
+      el("title", {}, svg, view.title);
+      el("desc", {}, svg, `${view.description} Select any component to inspect its low-level design contract.`);
+      const defs = el("defs", {}, svg);
+      const marker = el("marker", { id: "arrow", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" }, defs);
+      el("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "#8aaacb" }, marker);
+      el("rect", { width: view.width, height: view.height, fill: "#0c1524" }, svg);
+      for (const band of view.bands || []) {
+        el("rect", { x: 35, y: band.y, width: 1050, height: band.h, rx: 13, fill: "#0f1b2d", stroke: "#24344a", "stroke-dasharray": "5 5" }, svg);
+        text(svg, 52, band.y + 23, band.label, { fill: "#7991ad", "font-size": 10, "font-weight": 700, "letter-spacing": 1.2 });
+      }
+      if (view.illustration) drawLayouts();
+      const map = new Map(view.nodes.map(node => [node.id, node]));
+      view.edges.forEach(edge => drawEdge(edge, map));
+      view.nodes.forEach(drawNode);
+      for (const note of view.notes || []) {
+        text(svg, note.x, note.y, note.title, { fill: "#67d8ee", "font-size": 11, "font-weight": 700 });
+        note.lines.forEach((line, i) => text(svg, note.x, note.y + 25 + i * 22, line, { fill: "#9cacc1", "font-size": 11 }));
+      }
+      selectDetail(view.initial);
+      fitWidth(); viewport.scrollTop = 0; viewport.scrollLeft = 0;
+      history.replaceState(null, "", `#${activeView}`);
+    }
+    document.querySelectorAll("[data-view]").forEach(button => {
+      button.addEventListener("click", () => showView(button.dataset.view));
+      button.addEventListener("keydown", event => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const tabs = [...document.querySelectorAll("[data-view]")];
+        const index = tabs.indexOf(button);
+        const next = tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+        showView(next.dataset.view); next.focus();
+      });
+    });
+    document.getElementById("zoom-in").addEventListener("click", () => applyZoom(zoom + .15));
+    document.getElementById("zoom-out").addEventListener("click", () => applyZoom(zoom - .15));
+    document.getElementById("fit").addEventListener("click", fitWidth);
+    document.getElementById("print").addEventListener("click", () => window.print());
+    window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
+    window.architectureModel = { views, details };
+    showView(location.hash.slice(1) || "flow");
+  </script>
+</body>
+</html>

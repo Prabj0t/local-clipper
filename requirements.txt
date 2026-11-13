@@ -1,0 +1,10 @@
+# Complete Python runtime dependencies. Install into this project's .venv.
+# FFmpeg/FFprobe, Node.js, and Whisper/YuNet weights are checked separately.
+# Exact release locks will be generated after an approved dependency resolve.
+fastapi>=0.115,<1
+pydantic>=2.10,<3
+uvicorn>=0.34,<1
+faster-whisper>=1.1,<2
+numpy>=2,<3
+opencv-python-headless>=4.10,<5
+yt-dlp[default]>=2026.1,<2027
