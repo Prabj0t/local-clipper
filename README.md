@@ -110,12 +110,23 @@ py -3.11 -m venv .venv
 4. Analyze, or add clip ranges and English captions manually.
 5. Render a preview, edit, and export; automatic export is an explicit project setting.
 
+**Delete project** removes a project from the app only, after confirmation and
+only when no job is active. It keeps all files on disk, including original videos,
+downloaded sources, previews, exports, subtitles, caches, logs, and shared models.
+App-managed files remain under `.data/projects/<project-id>/`; deletion does not
+free disk space. Project and job records are retained internally but the removed
+project cannot be opened, edited, or queued in the app.
+
 Each YouTube download needs a separate per-job approval. Ongoing live streams,
 playlists, cookie extraction, authenticated videos, and automatic publishing are
 not part of this implementation. Do not use the app to bypass access restrictions.
 
 The selection policy estimates interest using audio variation, low-resolution
 visual changes, speech boundaries, and available public replay information.
+The editor reports whether public "Most replayed" data was returned by the
+extractor. A video showing that graph on YouTube does not by itself establish
+whether this app received it. Replay data obtained during inspection is retained
+as a fallback if the download's metadata omits it.
 It does not recognize every game's events or promise viral / most-watched clips.
 Auto selection has a safety ceiling of 100 clips per analysis; individual output
 ranges are limited to 10 minutes. No maximum input duration or RAM guarantee has
@@ -131,6 +142,9 @@ English-source word timestamps can drive highlighting. Translated English captio
 are phrase-timed; their text is not claimed to align word-for-word to Hindi audio.
 Original source audio is retained. Translation, framing, and editorial quality
 require real-footage evaluation.
+Burned-in captions are centered at 60% of the frame height, below the midpoint
+rather than near the bottom edge. Re-render existing clips to apply this placement;
+old video files are not changed or removed. SRT files contain text and timing only.
 
 ## Engineering boundaries
 

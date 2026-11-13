@@ -113,7 +113,8 @@ def visual_activity(
 
 def render_key(identity: dict, clip: dict, layout: dict, cues: list[dict], preview: bool) -> str:
     return fingerprint(
-        {"version": 1, "source": identity, "clip": {key: clip[key] for key in ("start", "end")},
+        {"version": 2 if cues else 1, "source": identity,
+         "clip": {key: clip[key] for key in ("start", "end")},
          "layout": layout,
          "cues": cues, "preview": preview}
     )

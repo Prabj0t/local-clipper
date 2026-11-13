@@ -78,6 +78,55 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("frame-ancestors 'none'", response.headers["content-security-policy"])
 
+    def test_delete_requires_token_and_preserves_files(self):
+        project = self.create()
+        path = f"/api/projects/{project['id']}"
+        exported = self.root / "data" / "projects" / project["id"] / "exports" / "clip.mp4"
+        exported.parent.mkdir(parents=True)
+        exported.write_bytes(b"keep exported video")
+        response = self.client.request("DELETE", f"{path}?revision=0", json={})
+        self.assertEqual(response.status_code, 403)
+        response = self.client.request(
+            "DELETE", f"{path}?revision=0", headers=self.headers, json={},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["files_preserved"])
+        self.assertEqual(self.client.get("/api/projects").json(), [])
+        self.assertEqual(self.client.get(path).status_code, 404)
+        self.assertEqual(self.client.get(f"{path}/source").status_code, 404)
+        self.assertEqual(
+            self.client.post(
+                f"{path}/jobs", headers=self.headers, json={"action": "inspect"},
+            ).status_code, 404,
+        )
+        self.assertEqual(exported.read_bytes(), b"keep exported video")
+        self.assertEqual(self.video.read_bytes(), b"unit test fixture")
+
+    def test_delete_rejects_stale_revision_and_active_job(self):
+        project = self.create()
+        path = f"/api/projects/{project['id']}"
+        edit = {"revision": 0, "settings": project["settings"], "clips": [], "cues": []}
+        self.assertEqual(self.client.put(path, headers=self.headers, json=edit).status_code, 200)
+        self.assertEqual(
+            self.client.request(
+                "DELETE", f"{path}?revision=0", headers=self.headers, json={},
+            ).status_code, 409,
+        )
+        job = self.client.post(
+            f"{path}/jobs", headers=self.headers, json={"action": "inspect"},
+        ).json()
+        self.assertEqual(
+            self.client.request(
+                "DELETE", f"{path}?revision=1", headers=self.headers, json={},
+            ).status_code, 409,
+        )
+        self.client.post(f"/api/jobs/{job['id']}/cancel", headers=self.headers, json={})
+        self.assertEqual(
+            self.client.request(
+                "DELETE", f"{path}?revision=1", headers=self.headers, json={},
+            ).status_code, 200,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

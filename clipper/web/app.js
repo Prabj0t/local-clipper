@@ -14,6 +14,12 @@ function notice(message = "") {
   $("notice").hidden = !message;
 }
 
+function showProjectWarnings() {
+  notice((project.document.warnings || []).filter(
+    (message) => message !== "Highlights are estimates, not measured audience retention.",
+  ).join("\n"));
+}
+
 async function api(path, method = "GET", data = undefined) {
   const options = { method, headers: {} };
   if (method !== "GET") {
@@ -48,12 +54,19 @@ async function listProjects() {
   const items = await api("/projects");
   $("projects").replaceChildren(...items.map((item) => {
     const button = element("button", item.name, project?.id === item.id ? "active" : "");
+    button.disabled = busy;
     button.addEventListener("click", async () => {
+      if (busy) return;
       if (dirty && !window.confirm("Discard your unsaved changes?")) return;
+      busy = true;
+      showJob();
       try {
         await openProject(item.id);
       } catch (error) {
         notice(error.message);
+      } finally {
+        busy = false;
+        showJob();
       }
     });
     return button;
@@ -127,8 +140,11 @@ function showJob() {
     $("cancel-job").hidden = !active;
     $("cancel-job").dataset.jobId = job.id;
   }
-  document.querySelectorAll("#editor-view input, #editor-view select, #editor-view textarea, [data-action], #save-project, #add-clip, .clip-row button").forEach((node) => {
+  document.querySelectorAll("#editor-view input, #editor-view select, #editor-view textarea, [data-action], #save-project, #delete-project, #add-clip, .clip-row button").forEach((node) => {
     node.disabled = Boolean(active || busy);
+  });
+  document.querySelectorAll("#new-project, #projects button").forEach((node) => {
+    node.disabled = busy;
   });
 }
 
@@ -169,6 +185,15 @@ function populateEditor() {
     : "Inspect the source to read its duration and dimensions.";
   $("download-control").hidden = project.kind !== "youtube" || Boolean(project.document.download?.local_path);
   const remote = project.document.remote;
+  const replay = project.document.download?.replay?.length
+    ? project.document.download.replay : remote?.replay || [];
+  $("replay-summary").textContent = project.kind === "local"
+    ? "Local video: no audience replay data. Highlights are estimated from the recording."
+    : replay.length
+      ? `Public Most replayed data available for analysis (${replay.length} segments).`
+      : remote || project.document.download
+        ? "Public Most replayed data was not returned by the extractor. Highlights use estimated signals instead; this is not a processing error."
+        : "Inspect the YouTube source to check whether public Most replayed data is returned.";
   $("download-estimate").textContent = project.kind === "youtube" && !project.document.download
     ? `Source: up to ${settings.source_height}p, complete recording. ${remote?.estimated_bytes ? `Estimated ${(remote.estimated_bytes / 1024 ** 3).toFixed(2)} GB.` : "Download size is not yet known."} No cookies or account credentials are used.`
     : "";
@@ -182,7 +207,7 @@ function populateEditor() {
 async function openProject(id) {
   project = await api(`/projects/${id}`);
   populateEditor();
-  notice((project.document.warnings || []).join("\n"));
+  showProjectWarnings();
   await listProjects();
 }
 
@@ -230,6 +255,7 @@ async function save() {
 
 $("create-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (busy) return;
   const button = event.submitter;
   button.disabled = true;
   try {
@@ -245,16 +271,43 @@ $("create-form").addEventListener("submit", async (event) => {
   }
 });
 
-$("new-project").addEventListener("click", () => {
-  if (dirty && !window.confirm("Discard your unsaved changes?")) return;
+function showNewProject() {
   project = null;
   dirty = false;
+  captionSnapshot = "";
   $("editor-view").hidden = true;
   $("create-view").hidden = false;
   $("breadcrumb").textContent = "Workspace / New project";
   $("source-player").removeAttribute("src");
   $("source-player").load();
+  $("approve-download").checked = false;
   notice();
+}
+
+$("new-project").addEventListener("click", () => {
+  if (busy) return;
+  if (dirty && !window.confirm("Discard your unsaved changes?")) return;
+  showNewProject();
+});
+$("delete-project").addEventListener("click", async () => {
+  if (busy || !project) return;
+  const { id, name, revision } = project;
+  if (!window.confirm(
+    `Delete "${name}" from this app?\n\nAll original videos, downloaded copies, clips, captions, caches, logs, and models will stay on disk. Unsaved edits will be discarded.`,
+  )) return;
+  busy = true;
+  showJob();
+  try {
+    await api(`/projects/${id}?revision=${revision}`, "DELETE");
+    if (project?.id === id) showNewProject();
+    await listProjects();
+    notice("Project removed from the app. No files were deleted.");
+  } catch (error) {
+    notice(error.message);
+  } finally {
+    busy = false;
+    showJob();
+  }
 });
 $("editor-view").addEventListener("input", (event) => {
   if (event.target.id !== "approve-download") setDirty();
@@ -317,12 +370,12 @@ async function poll() {
       project = latest;
       if (changed) {
         populateEditor();
-        notice((project.document.warnings || []).join("\n"));
+        showProjectWarnings();
       }
     } else project.jobs = latest.jobs;
     showJob();
   } catch (error) {
-    notice(`Connection unavailable: ${error.message}`);
+    if (project?.id === id && !busy) notice(`Connection unavailable: ${error.message}`);
   } finally {
     polling = false;
   }

@@ -35,7 +35,13 @@
       <div class="card compact"><h3>Local capabilities</h3><div id="capabilities" class="capabilities"></div><p class="help">Missing tools and models block the relevant step. This app never installs them for you.</p></div>
     </section>
     <section id="editor-view" hidden>
-      <div class="heading-row"><div><p class="eyebrow">PROJECT STUDIO</p><h1 id="editor-title"></h1></div><button id="save-project">Save changes</button></div>
+      <div class="heading-row">
+        <div><p class="eyebrow">PROJECT STUDIO</p><h1 id="editor-title"></h1></div>
+        <div class="project-actions">
+          <button id="save-project">Save changes</button>
+          <button id="delete-project" class="danger" type="button">Delete project</button>
+        </div>
+      </div>
       <div id="job-panel" class="card compact" hidden><div class="heading-row"><strong id="job-stage"></strong><button id="cancel-job">Cancel job</button></div><progress id="job-progress" max="1" value="0"></progress><p id="job-error" class="help"></p></div>
       <div class="studio">
         <div>
@@ -45,12 +51,13 @@
           </div>
           <div class="card">
             <div class="heading-row"><h2>Clip selection</h2><button id="add-clip">+ Add range</button></div>
-            <p class="help">Automated scores estimate interesting moments; they are not audience-retention measurements.</p>
+            <p class="help">Scores estimate interesting moments using speech, audio/visual peaks, and any available public replay signal. They are not creator audience-retention analytics.</p>
+            <p id="replay-summary" class="help"></p>
             <div id="clips"></div>
           </div>
           <div class="card">
             <h2>English captions</h2>
-            <p class="help">One cue per line: start seconds | end seconds | text. Editing resets word-level timing. Original audio is unchanged.</p>
+            <p class="help">One cue per line: start seconds | end seconds | text. Editing resets word-level timing. Burned-in captions appear slightly below the middle of the frame. Original audio is unchanged.</p>
             <textarea id="caption-editor" rows="8" spellcheck="true" placeholder="0 | 3.5 | Here is the important moment."></textarea>
           </div>
           <div id="exports" class="card"><h2>Local outputs</h2><div id="export-list"></div></div>

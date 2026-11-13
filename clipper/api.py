@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -133,6 +133,11 @@ def create_app(config: Config | None = None) -> FastAPI:
     @app.put("/api/projects/{project_id}")
     def edit(project_id: str, request: ProjectEdit):
         return store.edit(project_id, request)
+
+    @app.delete("/api/projects/{project_id}")
+    def remove(project_id: str, revision: int = Query(ge=0)):
+        store.remove(project_id, revision)
+        return {"removed": True, "files_preserved": True}
 
     @app.post("/api/projects/{project_id}/jobs", status_code=202)
     def enqueue(project_id: str, request: JobRequest):

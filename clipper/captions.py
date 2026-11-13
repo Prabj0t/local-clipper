@@ -57,10 +57,11 @@ def ass(cues: list[Cue], width: int, height: int) -> str:
         "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
         "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Default,Arial,{round(width * 0.055)},&H00FFFFFF,&H0000FFFF,&H00101010,"
-        f"&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,{round(width * .06)},"
+        f"&H80000000,-1,0,0,0,100,100,0,0,1,2,1,5,{round(width * .06)},"
         f"{round(width * .06)},{round(height * .1)},1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
+    position = rf"{{\pos({round(width * .5)},{round(height * .6)})}}"
     events = []
     for cue in cues:
         if not cue.words:
@@ -80,7 +81,7 @@ def ass(cues: list[Cue], width: int, height: int) -> str:
                 parts.append((start, end, text))
         events.extend(
             f"Dialogue: 0,{_clock(start, ass=True)},{_clock(end, ass=True)},"
-            f"Default,,0,0,0,,{text}\n"
+            f"Default,,0,0,0,,{position}{text}\n"
             for start, end, text in parts if _clock(start, ass=True) != _clock(end, ass=True)
         )
     return header + "".join(events)

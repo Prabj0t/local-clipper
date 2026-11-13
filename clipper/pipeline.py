@@ -90,7 +90,6 @@ class Pipeline:
             raise Blocked("Install an approved FFmpeg build before media analysis.")
         self.document["speech_completed"] = False
         self.document["warnings"] = [
-            "Highlights are estimates, not measured audience retention.",
             "Gaming-event recognition and active-speaker identification are not provided.",
         ]
         cues = []
@@ -123,7 +122,11 @@ class Pipeline:
             }
             atomic_json(evidence_path, evidence)
         self.report("selecting non-overlapping highlights", 0.75)
-        replay = self.document.get("download", self.document.get("remote", {})).get("replay", [])
+        replay = (
+            self.document.get("download", {}).get("replay")
+            or self.document.get("remote", {}).get("replay")
+            or []
+        )
         selection_settings = (
             self.settings.model_copy(update={"max_clips": None})
             if self.settings.llm != "off" else self.settings

@@ -60,7 +60,7 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True)
         with self.connection() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 1:
+            if version > 2:
                 raise RuntimeError("This database requires a newer application version.")
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript("""
@@ -68,7 +68,7 @@ class Store:
                     id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL,
                     source TEXT NOT NULL, settings TEXT NOT NULL, document TEXT NOT NULL,
                     revision INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL, removed_at TEXT
                 );
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
@@ -80,8 +80,13 @@ class Store:
                     ON jobs(project_id)
                     WHERE status IN ('queued', 'running', 'cancelling');
                 CREATE INDEX IF NOT EXISTS queue_order ON jobs(status, created_at);
-                PRAGMA user_version=1;
             """)
+            if version < 2:
+                db.execute("BEGIN IMMEDIATE")
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(projects)")}
+                if "removed_at" not in columns:
+                    db.execute("ALTER TABLE projects ADD COLUMN removed_at TEXT")
+                db.execute("PRAGMA user_version=2")
 
     def project_dir(self, project_id: str) -> Path:
         uuid.UUID(project_id)
@@ -89,7 +94,7 @@ class Store:
 
     @staticmethod
     def _project(row) -> dict:
-        if row is None:
+        if row is None or row["removed_at"] is not None:
             raise KeyError("Project not found.")
         value = dict(row)
         value["settings"] = json.loads(value["settings"])
@@ -102,7 +107,8 @@ class Store:
         timestamp = now()
         with self.connection() as db:
             db.execute(
-                "INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                "INSERT INTO projects(id, name, kind, source, settings, document, revision, "
+                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
                 (
                     project_id, request.name, kind, source,
                     request.settings.model_dump_json(),
@@ -122,7 +128,7 @@ class Store:
         with self.connection() as db:
             rows = db.execute(
                 "SELECT id, name, kind, revision, created_at, updated_at "
-                "FROM projects ORDER BY updated_at DESC LIMIT 100"
+                "FROM projects WHERE removed_at IS NULL ORDER BY updated_at DESC LIMIT 100"
             ).fetchall()
             return [dict(row) for row in rows]
 
@@ -154,18 +160,41 @@ class Store:
             )
         return self.project(project_id)
 
+    def remove(self, project_id: str, revision: int) -> None:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            project = self._project(
+                db.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
+            )
+            if project["revision"] != revision:
+                raise Conflict("Project changed. Reload before deleting it from the app.")
+            if db.execute(
+                "SELECT 1 FROM jobs WHERE project_id=? "
+                "AND status IN ('queued','running','cancelling')", (project_id,),
+            ).fetchone():
+                raise Conflict("Cancel or finish the active job before deleting the project.")
+            timestamp = now()
+            db.execute(
+                "UPDATE projects SET removed_at=?, updated_at=?, revision=revision+1 WHERE id=?",
+                (timestamp, timestamp, project_id),
+            )
+
     def publish(self, project_id: str, document: dict) -> None:
         with self.connection() as db:
             db.execute(
-                "UPDATE projects SET document=?, revision=revision+1, updated_at=? WHERE id=?",
+                "UPDATE projects SET document=?, revision=revision+1, updated_at=? "
+                "WHERE id=? AND removed_at IS NULL",
                 (json.dumps(document, allow_nan=False), now(), project_id),
             )
 
     def enqueue(self, project_id: str, request: JobRequest) -> dict:
-        self.project(project_id)
         job_id, timestamp = str(uuid.uuid4()), now()
         try:
             with self.connection() as db:
+                db.execute("BEGIN IMMEDIATE")
+                self._project(
+                    db.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
+                )
                 db.execute(
                     "INSERT INTO jobs(id, project_id, action, status, request, created_at, "
                     "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
